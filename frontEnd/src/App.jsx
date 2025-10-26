@@ -181,7 +181,6 @@ const AlumniList = () => {
         </div>
       )}
 
-      {/* Pagination */}
       <div className="flex justify-center mt-4 space-x-2">
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -190,9 +189,7 @@ const AlumniList = () => {
         >
           Prev
         </button>
-        <span className="px-3 py-2 bg-white border rounded">
-          Page {page}
-        </span>
+        <span className="px-3 py-2 bg-white border rounded">Page {page}</span>
         <button
           onClick={() => setPage((p) => p + 1)}
           className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300"
@@ -204,11 +201,12 @@ const AlumniList = () => {
   );
 };
 
-// ================= EDIT DETAIL PAGE =================
+// ================= ALUMNI EDIT PAGE =================
 const AlumniEdit = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [form, setForm] = useState({});
+  const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [files, setFiles] = useState({
@@ -220,6 +218,7 @@ const AlumniEdit = () => {
 
   useEffect(() => {
     fetchAlumni();
+    fetchAlumniJobs();
   }, []);
 
   const fetchAlumni = async () => {
@@ -229,51 +228,60 @@ const AlumniEdit = () => {
       setForm(data);
     } catch (err) {
       console.error("Error fetching alumni:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleChange = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const fetchAlumniJobs = async () => {
+    try {
+      const res = await fetch(`http://localhost:8081/api/alumni/${id}/jobs`);
+      const data = await res.json();
+      setJobs(data.length > 0 ? data : []);
+    } catch (err) {
+      console.error("Error fetching jobs:", err);
+      setJobs([]);
+    }
   };
 
-  const handleFileChange = (field, file) => {
-    setFiles((prev) => ({ ...prev, [field]: file }));
+  const handleChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+  const handleFileChange = (field, file) => setFiles((prev) => ({ ...prev, [field]: file }));
+  const handleJobChange = (index, field, value) => {
+    const copy = [...jobs];
+    copy[index][field] = value;
+    setJobs(copy);
   };
+  const addJob = () => {
+    if (jobs.length >= 6) return alert("Maximum 6 jobs allowed");
+    setJobs([...jobs, { company_name:"", company_address:"", job_position:"", start_date:"", end_date:"", department:"", responsibility:"" }]);
+  };
+  const removeJob = (index) => setJobs(jobs.filter((_, i) => i !== index));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       const formData = new FormData();
-      // Append text fields
       Object.keys(form).forEach((key) => {
-        if (key !== "image_url" && key !== "cv_or_resume" && key !== "memories_at_diu" && key !== "short_interview_video") {
+        if (!["image_url","cv_or_resume","memories_at_diu","short_interview_video"].includes(key))
           formData.append(key, form[key] || "");
-        }
       });
-      // Append files if they exist
       if (files.image_url) formData.append("image_url", files.image_url);
       if (files.cv_or_resume) formData.append("cv_or_resume", files.cv_or_resume);
       if (files.memories_at_diu) formData.append("memories_at_diu", files.memories_at_diu);
       if (files.short_interview_video) formData.append("short_interview_video", files.short_interview_video);
-      // Append existing file paths if no new file is uploaded
       if (!files.image_url && form.image_url) formData.append("image_url", form.image_url);
       if (!files.cv_or_resume && form.cv_or_resume) formData.append("cv_or_resume", form.cv_or_resume);
       if (!files.memories_at_diu && form.memories_at_diu) formData.append("memories_at_diu", form.memories_at_diu);
       if (!files.short_interview_video && form.short_interview_video) formData.append("short_interview_video", form.short_interview_video);
+      formData.append("jobs", JSON.stringify(jobs));
 
-      const res = await fetch(`http://localhost:8081/api/alumni/update/${id}`, {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch(`http://localhost:8081/api/alumni/update/${id}`, { method:"POST", body:formData });
       const data = await res.json();
       if (data.success) {
         alert("Alumni update saved successfully!");
         navigate("/dashboard");
-      } else {
-        alert("Failed to save update: " + (data.error || "Unknown error"));
-      }
+      } else alert("Failed to save update: " + (data.error || "Unknown error"));
     } catch (err) {
       console.error("Save error:", err);
       alert("Error saving update: " + err.message);
@@ -285,214 +293,89 @@ const AlumniEdit = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white shadow-md rounded-lg mt-6">
-      <h2 className="text-2xl font-bold mb-4 text-green-700">
-        Edit Alumni Information (ID: {id})
-      </h2>
+      <h2 className="text-2xl font-bold mb-4 text-green-700">Edit Alumni Information (ID: {id})</h2>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4" encType="multipart/form-data">
-        {[
-          "name",
-          "regcode",
-          "batch",
-          "passing_year",
-          "department",
-          "EMAIL",
-          "PHONE_NO",
-          "DOB",
-          "MAILING_ADD",
-          "PARMANENT_ADD",
-          "LinkedIn_Link",
-          "Facebook_Link",
-          "instagram_link",
-          "twitter_link",
-          "company_name",
-          "job_position",
-          "job_responsibility",
-          "start_date",
-          "end_date",
-          "higher_studies",
-          "remarks",
-        ].map((field) => (
+
+        {/* ---------------- Text Inputs ---------------- */}
+        {["name","regcode","batch","passing_year","department","EMAIL","PHONE_NO","DOB","MAILING_ADD","PARMANENT_ADD","LinkedIn_Link","Facebook_Link","instagram_link","twitter_link","higher_studies","remarks"].map((field) => (
           <div key={field}>
-            <label className="block text-sm font-semibold text-gray-700 capitalize">
-              {field.replace(/_/g, " ")}
-            </label>
-            <input
-              type={field === "DOB" || field === "start_date" || field === "end_date" ? "date" : "text"}
-              value={form[field] || ""}
-              onChange={(e) => handleChange(field, e.target.value)}
-              className="w-full p-2 border rounded"
-            />
+            <label className="block text-sm font-semibold text-gray-700 capitalize">{field.replace(/_/g," ")}</label>
+            <input type={["DOB"].includes(field) ? "date":"text"} value={form[field] || ""} onChange={(e)=>handleChange(field,e.target.value)} className="w-full p-2 border rounded"/>
           </div>
         ))}
 
-        {/* File Upload Fields */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700">Profile Image</label>
-          {form.image_url && (
-            <div className="mb-2">
-              <img src={form.image_url} alt="Profile" className="w-24 h-24 object-cover rounded" />
-              <p className="text-sm text-gray-500">Current: {form.image_url}</p>
-            </div>
-          )}
-          <input
-            type="file"
-            accept="image/jpeg,image/png"
-            onChange={(e) => handleFileChange("image_url", e.target.files[0])}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700">CV or Resume (PDF)</label>
-          {form.cv_or_resume && (
-            <div className="mb-2">
-              <a href={form.cv_or_resume} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-                View Current CV/Resume
-              </a>
-              <p className="text-sm text-gray-500">Current: {form.cv_or_resume}</p>
-            </div>
-          )}
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => handleFileChange("cv_or_resume", e.target.files[0])}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700">Memories at DIU (Image/Video)</label>
-          {form.memories_at_diu && (
-            <div className="mb-2">
-              {form.memories_at_diu.match(/\.(mp4|mov)$/i) ? (
-                <video src={form.memories_at_diu} controls className="w-24 h-24 object-cover rounded" />
-              ) : (
-                <img src={form.memories_at_diu} alt="Memories" className="w-24 h-24 object-cover rounded" />
-              )}
-              <p className="text-sm text-gray-500">Current: {form.memories_at_diu}</p>
-            </div>
-          )}
-          <input
-            type="file"
-            accept="image/jpeg,image/png,video/mp4,video/quicktime"
-            onChange={(e) => handleFileChange("memories_at_diu", e.target.files[0])}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-
-
-        <div>
-          <label className="block text-sm font-semibold text-gray-700">Short Interview Video</label>
-          {form.short_interview_video && (
-            <div className="mb-2">
-              <video src={form.short_interview_video} controls className="w-24 h-24 object-cover rounded" />
-              <p className="text-sm text-gray-500">Current: {form.short_interview_video}</p>
-            </div>
-          )}
-          <input
-            type="file"
-            accept="video/mp4,video/quicktime"
-            onChange={(e) => handleFileChange("short_interview_video", e.target.files[0])}
-            className="w-full p-2 border rounded"
-          />
-        </div>
-
-        {/* Yes/No Dropdown Fields */}
+        {/* ---------------- File Upload Fields ---------------- */}
         {[
-          { key: "helping_alumni", label: "Helping Alumni" },
-          { key: "job_seeker", label: "Job Seeker" },
-          { key: "interested_to_join_reunion", label: "Interested to Join Reunion" },
-          { key: "interested_to_form_club", label: "Interested to Form Club" },
-        ].map(({ key, label }) => (
+          { key: "image_url", label: "Profile Image", accept: "image/jpeg,image/png" },
+          { key: "cv_or_resume", label: "CV/Resume (PDF)", accept: "application/pdf" },
+          { key: "memories_at_diu", label: "Memories at DIU", accept: "image/jpeg,image/png,video/mp4,video/quicktime" },
+          { key: "short_interview_video", label: "Short Interview Video", accept: "video/mp4,video/quicktime" }
+        ].map(({key,label,accept})=>(
           <div key={key}>
-            <label className="block text-sm font-semibold text-gray-700">
-              {label}
-            </label>
-            <select
-              value={form[key] || "No"}
-              onChange={(e) => handleChange(key, e.target.value)}
-              className="w-full p-2 border rounded"
-            >
+            <label className="block text-sm font-semibold text-gray-700">{label}</label>
+            {form[key] && <div className="mb-2">{key.includes("video") || (key==="memories_at_diu" && form[key].match(/\.(mp4|mov)$/i)) ? <video src={form[key]} controls className="w-24 h-24 object-cover rounded"/> : <img src={form[key]} alt={key} className="w-24 h-24 object-cover rounded"/>}<p className="text-sm text-gray-500">Current: {form[key]}</p></div>}
+            <input type="file" accept={accept} onChange={(e)=>handleFileChange(key,e.target.files[0])} className="w-full p-2 border rounded"/>
+          </div>
+        ))}
+
+        {/* ---------------- Yes/No Dropdowns ---------------- */}
+        {[{key:"helping_alumni",label:"Helping Alumni"},{key:"job_seeker",label:"Job Seeker"},{key:"interested_to_join_reunion",label:"Interested to Join Reunion"},{key:"interested_to_form_club",label:"Interested to Form Club"}].map(({key,label})=>(
+          <div key={key}>
+            <label className="block text-sm font-semibold text-gray-700">{label}</label>
+            <select value={form[key] || "No"} onChange={(e)=>handleChange(key,e.target.value)} className="w-full p-2 border rounded">
               <option>No</option>
               <option>Yes</option>
             </select>
           </div>
         ))}
 
+        {/* ---------------- Job Details ---------------- */}
+        <div className="col-span-2">
+          <h3 className="text-lg font-semibold mt-4">Job Details</h3>
+          {jobs.map((job, idx)=>(
+            <div key={idx} className="border p-3 rounded mb-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input placeholder="Company Name" value={job.company_name} onChange={(e)=>handleJobChange(idx,"company_name",e.target.value)} className="p-2 border rounded"/>
+              <input placeholder="Company Address" value={job.company_address} onChange={(e)=>handleJobChange(idx,"company_address",e.target.value)} className="p-2 border rounded"/>
+              <input placeholder="Job Position" value={job.job_position} onChange={(e)=>handleJobChange(idx,"job_position",e.target.value)} className="p-2 border rounded"/>
+              <input type="date" placeholder="Start Date" value={job.start_date} onChange={(e)=>handleJobChange(idx,"start_date",e.target.value)} className="p-2 border rounded"/>
+              <input type="date" placeholder="End Date" value={job.end_date} onChange={(e)=>handleJobChange(idx,"end_date",e.target.value)} className="p-2 border rounded"/>
+              <input placeholder="Department" value={job.department} onChange={(e)=>handleJobChange(idx,"department",e.target.value)} className="p-2 border rounded"/>
+              <textarea placeholder="Responsibility" value={job.responsibility} onChange={(e)=>handleJobChange(idx,"responsibility",e.target.value)} className="p-2 border rounded col-span-2"/>
+              <button type="button" onClick={()=>removeJob(idx)} className="bg-red-500 text-white px-2 py-1 rounded col-span-2">Remove</button>
+            </div>
+          ))}
+          {jobs.length < 6 && <button type="button" onClick={addJob} className="bg-blue-600 text-white px-4 py-2 rounded mt-2">Add Job</button>}
+        </div>
+
+        {/* ---------------- Form Buttons ---------------- */}
         <div className="col-span-2 flex justify-between mt-4">
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard")}
-            className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+          <button type="button" onClick={()=>navigate("/dashboard")} className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
+          <button type="submit" disabled={saving} className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700">{saving ? "Saving..." : "Save Changes"}</button>
         </div>
       </form>
     </div>
   );
 };
 
-// ================= DASHBOARD LAYOUT =================
-const DashboardLayout = () => {
-  const [activePage, setActivePage] = useState("dashboard");
-
-  return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <div className="w-64 bg-green-700 text-white p-6 flex flex-col">
-        <h2 className="text-2xl font-bold mb-8">DIU Portal</h2>
-        <button
-          onClick={() => setActivePage("dashboard")}
-          className={`text-left mb-4 p-2 rounded ${activePage === "dashboard" ? "bg-green-900" : "hover:bg-green-800"
-            }`}
-        >
-          Dashboard
-        </button>
-        <button
-          onClick={() => setActivePage("alumni")}
-          className={`text-left p-2 rounded ${activePage === "alumni" ? "bg-green-900" : "hover:bg-green-800"
-            }`}
-        >
-          Alumni List
-        </button>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 p-6">
-        {activePage === "dashboard" && (
-          <div className="text-center mt-10">
-            <h1 className="text-3xl font-bold text-green-700 mb-2">
-              Welcome to Dashboard 🎉
-            </h1>
-            <p className="text-gray-600">
-              Use the sidebar to view or edit alumni information.
-            </p>
-          </div>
-        )}
-        {activePage === "alumni" && <AlumniList />}
-      </div>
-    </div>
-  );
-};
-
-// ================= MAIN APP =================
-const App = () => (
-  <Router>
-    <Routes>
-      <Route path="/" element={<Login />} />
-      <Route path="/dashboard" element={<DashboardLayout />} />
-      <Route path="/alumni/:id" element={<AlumniEdit />} />
-    </Routes>
-  </Router>
+// ================= DASHBOARD WRAPPER =================
+const Dashboard = () => (
+  <div>
+    <AlumniList />
+  </div>
 );
+
+// ================= APP =================
+function App() {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/alumni/:id" element={<AlumniEdit />} />
+      </Routes>
+    </Router>
+  );
+}
 
 export default App;
