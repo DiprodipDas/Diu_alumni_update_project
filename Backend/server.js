@@ -73,12 +73,13 @@ app.get("/api/alumni", (req, res) => {
   const offset = (page - 1) * limit;
 
   const sql = `
-    SELECT id, name, regcode, batch, passing_year, department,
-           EMAIL, PHONE_NO, image_url, LinkedIn_Link, Facebook_Link
-    FROM alumni_infos
-    ORDER BY id ASC
-    LIMIT ? OFFSET ?
-  `;
+  SELECT id, name, regcode, batch, passing_year, department,
+         EMAIL, PHONE_NO, image_url, LinkedIn_Link, Facebook_Link
+  FROM alumni_infos
+  WHERE status = 0
+  ORDER BY id ASC
+  LIMIT ? OFFSET ?
+`;
   db.query(sql, [limit, offset], (err, results) => {
     if (err) return res.status(500).json({ error: "Database error" });
     res.json(results);
@@ -213,7 +214,15 @@ app.post(
             console.error("❌ Error inserting jobs:", err4);
             return res.status(500).json({ error: `Jobs insert failed: ${err4.message}` });
           }
-          res.json({ success: true, message: "Alumni and jobs saved successfully" });
+
+          // ✅ Update status in alumni_infos
+          db.query("UPDATE alumni_infos SET status = 1 WHERE id = ?", [id], (err5) => {
+            if (err5) {
+              console.error("❌ Error updating alumni status:", err5);
+              return res.status(500).json({ error: "Failed to update alumni status" });
+            }
+            res.json({ success: true, message: "Alumni and jobs saved successfully, status updated" });
+          });
         });
       });
     });
@@ -221,6 +230,7 @@ app.post(
 );
 
 // Root test route
+
 app.get("/", (req, res) => res.send("✅ Alumni API running successfully!"));
 
 // Start server
