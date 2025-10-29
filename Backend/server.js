@@ -47,7 +47,7 @@ const upload = multer({
       short_interview_video: ["video/mp4", "video/quicktime"],
       image_url: ["image/jpeg", "image/png"],
       cv_or_resume: ["application/pdf"],
-      memories_at_diu: ["image/jpeg", "image/png", "video/mp4", "video/quicktime"],
+      memories_at_diu: ["image/jpeg", "image/png"],
     };
     if (allowedTypes[file.fieldname]?.includes(file.mimetype)) cb(null, true);
     else cb(new Error(`Invalid file type for ${file.fieldname}`), false);
@@ -66,7 +66,7 @@ app.post("/api/login", (req, res) => {
 
 // ===================== ALUMNI APIs =====================
 
-// 1️⃣ Paginated list
+// 1️⃣ Paginated list (Original alumni - status = 0)
 app.get("/api/alumni", (req, res) => {
   const page = parseInt(req.query.page) || 1;
   const limit = 25;
@@ -86,7 +86,7 @@ app.get("/api/alumni", (req, res) => {
   });
 });
 
-// 2️⃣ Detailed alumni info
+// 2️⃣ Detailed alumni info (Original alumni)
 app.get("/api/alumni/:id", (req, res) => {
   const { id } = req.params;
   db.query("SELECT * FROM alumni_infos WHERE id=?", [id], (err, result) => {
@@ -96,7 +96,7 @@ app.get("/api/alumni/:id", (req, res) => {
   });
 });
 
-// 3️⃣ Get jobs for alumni
+// 3️⃣ Get jobs for alumni (Original alumni jobs)
 app.get("/api/alumni/:id/jobs", (req, res) => {
   const { id } = req.params;
   const sql = `
@@ -112,7 +112,64 @@ app.get("/api/alumni/:id/jobs", (req, res) => {
   });
 });
 
-// 4️⃣ Update alumni + jobs
+// 4️⃣ Updated Alumni List (status = 1 with modified data)
+app.get("/api/updated-alumni", (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = 25;
+  const offset = (page - 1) * limit;
+
+  const sql = `
+    SELECT 
+      a.id as transcript_id,
+      am.id,
+      am.name,
+      am.EMAIL,
+      am.updated_at
+    FROM alumni_infos a
+    JOIN alumni_infos_modified am ON a.id = am.transcript_id
+    WHERE a.status = 1
+    ORDER BY am.updated_at DESC
+    LIMIT ? OFFSET ?
+  `;
+  
+  db.query(sql, [limit, offset], (err, results) => {
+    if (err) return res.status(500).json({ error: "Database error" });
+    res.json(results);
+  });
+});
+
+// 7. GET full modified alumni + jobs (ADD THIS ONLY)
+app.get("/api/updated-alumni/:id", (req, res) => {
+  const { id } = req.params;
+
+  const sqlAlumni = `SELECT * FROM alumni_infos_modified WHERE id = ?`;
+  const sqlJobs = `SELECT * FROM alumni_job_details_modified WHERE alumni_modified_id = ? ORDER BY id ASC`;
+
+  db.query(sqlAlumni, [id], (errA, alumniRows) => {
+    if (errA || alumniRows.length === 0) {
+      return res.status(404).json({ error: "Alumni not found" });
+    }
+
+    db.query(sqlJobs, [id], (errJ, jobRows) => {
+      if (errJ) return res.status(500).json({ error: "DB error (jobs)" });
+      res.json({ alumni: alumniRows[0], jobs: jobRows });
+    });
+  });
+});
+
+// 5️⃣ Profile API (User profile info)
+app.get("/api/profile", (req, res) => {
+  // For demo purposes - returning static admin info
+  // In production, you should get this from session/JWT
+  res.json({
+    name: "Admin User",
+    email: "admin@diu.ac",
+    role: "Admin",
+    last_login: new Date().toISOString()
+  });
+});
+
+// 6️⃣ Update alumni + jobs
 app.post(
   "/api/alumni/update/:id",
   upload.fields([
@@ -137,10 +194,10 @@ app.post(
           transcript_id, name, regcode, batch, passing_year, department,
           EMAIL, PHONE_NO, DOB, MAILING_ADD, PARMANENT_ADD, image_url,
           LinkedIn_Link, Facebook_Link, instagram_link, twitter_link,
-          short_interview_video, helping_alumni, job_seeker,
+          short_interview_video,memories_at_diu, helping_alumni, job_seeker,
           interested_to_join_reunion, interested_to_form_club,
           cv_or_resume, higher_studies, remarks, created_at, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW())
       `;
 
       const alumniValues = [
@@ -161,6 +218,7 @@ app.post(
         data.instagram_link || null,
         data.twitter_link || null,
         files.short_interview_video ? `/assets/${files.short_interview_video[0].filename}` : data.short_interview_video || null,
+        files.memories_at_diu ? `/assets/${files.memories_at_diu[0].filename}` : data.memories_at_diu || null,
         data.helping_alumni || "No",
         data.job_seeker || "No",
         data.interested_to_join_reunion || "No",
@@ -187,7 +245,15 @@ app.post(
         }
 
         if (!jobs || jobs.length === 0) {
-          return res.json({ success: true, message: "Alumni saved (no jobs)" });
+          // ✅ Update status in alumni_infos even without jobs
+          db.query("UPDATE alumni_infos SET status = 1 WHERE id = ?", [id], (err5) => {
+            if (err5) {
+              console.error("❌ Error updating alumni status:", err5);
+              return res.status(500).json({ error: "Failed to update alumni status" });
+            }
+            res.json({ success: true, message: "Alumni saved successfully (no jobs)" });
+          });
+          return;
         }
 
         const jobSql = `
@@ -229,8 +295,7 @@ app.post(
   }
 );
 
-// Root test route
-
+// Root test route 
 app.get("/", (req, res) => res.send("✅ Alumni API running successfully!"));
 
 // Start server
